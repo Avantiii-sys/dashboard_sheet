@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Kesar Dashboard</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+tailwind.config = {
+  darkMode: 'class'
+}
+</script>
+
+</head>
+
+<body class="bg-orange-50 text-gray-800 dark:bg-[#0b1a2f] dark:text-white p-6 text-center transition-all duration-300">
+
+<button onclick="toggleDark()" id="themeBtn"
+class="fixed top-4 right-4 px-3 py-1 text-sm bg-orange-500 text-white rounded-md shadow">
+🌙 Dark
+</button>
+
+<h1 class="text-3xl font-bold mb-6 text-orange-600 dark:text-cyan-300">
+🌱 Kesar Smart Dashboard
+</h1>
+
+<div class="flex justify-center gap-6 flex-wrap">
+
+  <div class="bg-white dark:bg-[#1f2e45] p-6 rounded-xl shadow-md w-52">
+    <h2 class="text-orange-500 dark:text-cyan-300 font-semibold">🌡️ Temperature</h2>
+    <p id="temp" class="text-3xl font-bold mt-2 text-gray-900 dark:text-white">--</p>
+    <p id="tempStatus" class="mt-1"></p>
+  </div>
+
+  <div class="bg-white dark:bg-[#1f2e45] p-6 rounded-xl shadow-md w-52">
+    <h2 class="text-orange-500 dark:text-cyan-300 font-semibold">💧 Humidity</h2>
+    <p id="hum" class="text-3xl font-bold mt-2 text-gray-900 dark:text-white">--</p>
+    <p id="humStatus" class="mt-1"></p>
+  </div>
+
+</div>
+
+<div class="mt-6">
+  <h2 class="text-xl text-orange-600 dark:text-cyan-300 font-semibold">🚨 Alerts</h2>
+  <p id="alerts" class="text-lg mt-2">Loading...</p>
+
+  <div class="mt-3">
+    <p id="lastUpdate" class="text-sm"></p>
+    <p id="statusBadge" class="text-sm font-semibold"></p>
+  </div>
+</div>
+
+<div class="mt-8 max-w-2xl mx-auto bg-white dark:bg-[#1f2e45] p-4 rounded-xl shadow-md">
+  <canvas id="chart"></canvas>
+</div>
+
+<script>
+
+// 🌙 DARK MODE
+function toggleDark() {
+  document.body.classList.toggle("dark");
+
+  const btn = document.getElementById("themeBtn");
+
+  if (document.body.classList.contains("dark")) {
+    localStorage.setItem("theme", "dark");
+    btn.innerText = "☀️ Light";
+  } else {
+    localStorage.setItem("theme", "light");
+    btn.innerText = "🌙 Dark";
+  }
+
+  updateChartTheme();
+}
+
+window.onload = () => {
+  const btn = document.getElementById("themeBtn");
+
+  if (localStorage.getItem("theme") === "dark") {
+    document.body.classList.add("dark");
+    btn.innerText = "☀️ Light";
+  }
+};
+
+// 🔥 GOOGLE SHEET CSV LINK
+const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRqxlR6E4_iv6Ni_yWBED8D6zxTIHJGLD18TC_UC65xLVB_i-pSpjAwd-jeBOlRD3uQyo3juZyj-nP3/pub?gid=0&single=true&output=csv";
+
+let chart;
+let data = [];
+let index = 0;
+
+// LOAD DATA FROM SHEET
+async function loadData() {
+  try {
+    const res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(sheetURL) + "&t=" + new Date().getTime());
+    const text = await res.text();
+
+    const rows = text.trim().split("\n").slice(1);
+
+    data = rows.map(row => {
+      const cols = row.split(",");
+
+      return {
+        time: cols[0]?.trim(),
+        temp: parseFloat(cols[1]?.trim()),
+        hum: parseFloat(cols[2]?.trim())
+      };
+    }).filter(d => !isNaN(d.temp) && !isNaN(d.hum));
+
+    updateUI();
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById("alerts").innerText = "⚠️ Fetch failed";
+  }
+}
+
+function updateUI() {
+  if (data.length === 0) return;
+
+  if (index >= data.length) index = 0;
+
+  const d = data[index];
+
+  document.getElementById("temp").innerText = d.temp + " °C";
+  document.getElementById("hum").innerText = d.hum + " %";
+
+  document.getElementById("tempStatus").innerText =
+    d.temp > 25 ? "High" : "Normal";
+
+  document.getElementById("tempStatus").className =
+    d.temp > 25 ? "text-red-500" : "text-green-500";
+
+  document.getElementById("humStatus").innerText =
+    d.hum < 40 ? "Low" : "Normal";
+
+  document.getElementById("humStatus").className =
+    d.hum < 40 ? "text-red-500" : "text-green-500";
+
+  let alert = "";
+  if (d.temp > 25) alert += "🔥 Temperature too high! ";
+  if (d.hum < 40) alert += "💧 Humidity too low! ";
+
+  document.getElementById("alerts").innerText =
+    alert || "All conditions optimal ✅";
+
+  // 🕒 LAST UPDATE
+  document.getElementById("lastUpdate").innerText =
+    "Last updated: " + d.time;
+
+  // 🟢 STATUS
+  document.getElementById("statusBadge").innerText = "🟢 Live";
+  document.getElementById("statusBadge").className = "text-green-500 font-semibold";
+
+  // GRAPH
+  if (!chart) {
+    const ctx = document.getElementById("chart").getContext("2d");
+
+    chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Temperature (°C)",
+            data: [],
+            borderColor: "#f97316",
+            tension: 0.3
+          },
+          {
+            label: "Humidity (%)",
+            data: [],
+            borderColor: "#38bdf8",
+            tension: 0.3
+          }
+        ]
+      },
+      options: getChartOptions()
+    });
+  }
+
+  chart.data.labels.push(d.time);
+  chart.data.datasets[0].data.push(d.temp);
+  chart.data.datasets[1].data.push(d.hum);
+
+  if (chart.data.labels.length > 10) {
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+    chart.data.datasets[1].data.shift();
+  }
+
+  chart.update();
+
+  index++;
+}
+
+// 🎨 CHART THEME
+function getChartOptions() {
+  const isDark = document.body.classList.contains("dark");
+
+  return {
+    plugins: {
+      legend: {
+        labels: {
+          color: isDark ? "#ffffff" : "#000000"
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: {
+          color: isDark ? "#ffffff" : "#000000"
+        }
+      },
+      y: {
+        ticks: {
+          color: isDark ? "#ffffff" : "#000000"
+        }
+      }
+    }
+  };
+}
+
+function updateChartTheme() {
+  if (chart) {
+    chart.options = getChartOptions();
+    chart.update();
+  }
+}
+
+// 🔁 LOOP
+setInterval(updateUI, 5000);
+loadData();
+
+</script>
+
+</body>
+</html>
