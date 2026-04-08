@@ -17,6 +17,7 @@ tailwind.config = {
 
 <body class="bg-orange-50 text-gray-800 dark:bg-[#0b1a2f] dark:text-white p-6 text-center transition-all duration-300">
 
+<!-- TOGGLE -->
 <button onclick="toggleDark()" id="themeBtn"
 class="fixed top-4 right-4 px-3 py-1 text-sm bg-orange-500 text-white rounded-md shadow">
 🌙 Dark
@@ -26,42 +27,50 @@ class="fixed top-4 right-4 px-3 py-1 text-sm bg-orange-500 text-white rounded-md
 🌱 Kesar Smart Dashboard
 </h1>
 
+<!-- CARDS -->
 <div class="flex justify-center gap-6 flex-wrap">
 
   <div class="bg-white dark:bg-[#1f2e45] p-6 rounded-xl shadow-md w-52">
     <h2 class="text-orange-500 dark:text-cyan-300 font-semibold">🌡️ Temperature</h2>
     <p id="temp" class="text-3xl font-bold mt-2 text-gray-900 dark:text-white">--</p>
-    <p id="tempStatus" class="mt-1"></p>
+    <p id="tempStatus"></p>
   </div>
 
   <div class="bg-white dark:bg-[#1f2e45] p-6 rounded-xl shadow-md w-52">
     <h2 class="text-orange-500 dark:text-cyan-300 font-semibold">💧 Humidity</h2>
     <p id="hum" class="text-3xl font-bold mt-2 text-gray-900 dark:text-white">--</p>
-    <p id="humStatus" class="mt-1"></p>
+    <p id="humStatus"></p>
   </div>
 
 </div>
 
+<!-- ALERT -->
 <div class="mt-6">
   <h2 class="text-xl text-orange-600 dark:text-cyan-300 font-semibold">🚨 Alerts</h2>
-  <p id="alerts" class="text-lg mt-2">Loading...</p>
+  <p id="alerts">Loading...</p>
 
   <div class="mt-3">
-    <p id="lastUpdate" class="text-sm"></p>
-    <p id="statusBadge" class="text-sm font-semibold"></p>
+    <p id="lastUpdate"></p>
+    <p id="statusBadge"></p>
   </div>
 </div>
 
+<!-- GRAPH -->
 <div class="mt-8 max-w-2xl mx-auto bg-white dark:bg-[#1f2e45] p-4 rounded-xl shadow-md">
   <canvas id="chart"></canvas>
 </div>
 
+<!-- SLIDER -->
+<div class="mt-6 max-w-xl mx-auto">
+  <input type="range" id="timeSlider" min="0" max="0" value="0" class="w-full">
+  <p id="sliderTime" class="text-sm mt-2"></p>
+</div>
+
 <script>
 
-// 🌙 DARK MODE
+// DARK MODE
 function toggleDark() {
   document.body.classList.toggle("dark");
-
   const btn = document.getElementById("themeBtn");
 
   if (document.body.classList.contains("dark")) {
@@ -77,37 +86,42 @@ function toggleDark() {
 
 window.onload = () => {
   const btn = document.getElementById("themeBtn");
-
   if (localStorage.getItem("theme") === "dark") {
     document.body.classList.add("dark");
     btn.innerText = "☀️ Light";
   }
 };
 
-// 🔥 GOOGLE SHEET CSV LINK
+// GOOGLE SHEET
 const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRqxlR6E4_iv6Ni_yWBED8D6zxTIHJGLD18TC_UC65xLVB_i-pSpjAwd-jeBOlRD3uQyo3juZyj-nP3/pub?gid=0&single=true&output=csv";
 
-let chart;
 let data = [];
 let index = 0;
+let chart;
+let isManual = false;
 
-// LOAD DATA FROM SHEET
+// LOAD DATA
 async function loadData() {
   try {
-    const res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(sheetURL) + "&t=" + new Date().getTime());
+    const res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(sheetURL));
     const text = await res.text();
 
     const rows = text.trim().split("\n").slice(1);
 
-    data = rows.map(row => {
-      const cols = row.split(",");
-
+    data = rows.map(r => {
+      const c = r.split(",");
       return {
-        time: cols[0]?.trim(),
-        temp: parseFloat(cols[1]?.trim()),
-        hum: parseFloat(cols[2]?.trim())
+        time: c[0],
+        temp: parseFloat(c[1]),
+        hum: parseFloat(c[2])
       };
-    }).filter(d => !isNaN(d.temp) && !isNaN(d.hum));
+    }).filter(d => !isNaN(d.temp));
+
+    // slider setup
+    const slider = document.getElementById("timeSlider");
+    slider.max = data.length - 1;
+    slider.value = data.length - 1;
+    index = data.length - 1;
 
     updateUI();
 
@@ -117,10 +131,16 @@ async function loadData() {
   }
 }
 
+// SLIDER CONTROL
+document.getElementById("timeSlider").addEventListener("input", (e) => {
+  index = parseInt(e.target.value);
+  isManual = true;
+  updateUI();
+});
+
+// UPDATE UI
 function updateUI() {
   if (data.length === 0) return;
-
-  if (index >= data.length) index = 0;
 
   const d = data[index];
 
@@ -139,20 +159,16 @@ function updateUI() {
   document.getElementById("humStatus").className =
     d.hum < 40 ? "text-red-500" : "text-green-500";
 
-  let alert = "";
-  if (d.temp > 25) alert += "🔥 Temperature too high! ";
-  if (d.hum < 40) alert += "💧 Humidity too low! ";
-
   document.getElementById("alerts").innerText =
-    alert || "All conditions optimal ✅";
+    (d.temp > 25 ? "🔥 Temp High " : "") +
+    (d.hum < 40 ? "💧 Humidity Low" : "") ||
+    "All good ✅";
 
-  // 🕒 LAST UPDATE
-  document.getElementById("lastUpdate").innerText =
-    "Last updated: " + d.time;
-
-  // 🟢 STATUS
+  document.getElementById("lastUpdate").innerText = "Last updated: " + d.time;
   document.getElementById("statusBadge").innerText = "🟢 Live";
-  document.getElementById("statusBadge").className = "text-green-500 font-semibold";
+
+  document.getElementById("sliderTime").innerText =
+    "Viewing: " + d.time;
 
   // GRAPH
   if (!chart) {
@@ -164,16 +180,14 @@ function updateUI() {
         labels: [],
         datasets: [
           {
-            label: "Temperature (°C)",
+            label: "Temp",
             data: [],
-            borderColor: "#f97316",
-            tension: 0.3
+            borderColor: "#f97316"
           },
           {
-            label: "Humidity (%)",
+            label: "Humidity",
             data: [],
-            borderColor: "#38bdf8",
-            tension: 0.3
+            borderColor: "#38bdf8"
           }
         ]
       },
@@ -192,33 +206,29 @@ function updateUI() {
   }
 
   chart.update();
-
-  index++;
 }
 
-// 🎨 CHART THEME
+// AUTO UPDATE (latest mode)
+setInterval(() => {
+  if (!isManual && data.length > 0) {
+    index = data.length - 1;
+    updateUI();
+  }
+}, 5000);
+
+// CHART THEME
 function getChartOptions() {
-  const isDark = document.body.classList.contains("dark");
+  const dark = document.body.classList.contains("dark");
 
   return {
     plugins: {
       legend: {
-        labels: {
-          color: isDark ? "#ffffff" : "#000000"
-        }
+        labels: { color: dark ? "#fff" : "#000" }
       }
     },
     scales: {
-      x: {
-        ticks: {
-          color: isDark ? "#ffffff" : "#000000"
-        }
-      },
-      y: {
-        ticks: {
-          color: isDark ? "#ffffff" : "#000000"
-        }
-      }
+      x: { ticks: { color: dark ? "#fff" : "#000" }},
+      y: { ticks: { color: dark ? "#fff" : "#000" }}
     }
   };
 }
@@ -230,8 +240,6 @@ function updateChartTheme() {
   }
 }
 
-// 🔁 LOOP
-setInterval(updateUI, 5000);
 loadData();
 
 </script>
